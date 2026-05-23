@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, time
 
-from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal
+from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QEvent
 from PyQt6.QtGui import (
     QColor,
     QFont,
@@ -16,6 +16,8 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from math import pi, cos, sin, hypot, atan2
 
+from memo_app.ui.theme import build_app_stylesheet, get_palette
+
 
 DARK_MODE = True
 
@@ -25,12 +27,22 @@ def set_clock_dark_mode(enabled: bool) -> None:
     DARK_MODE = enabled
 
 
+def _rhu(x: float) -> int:
+    """Round half-up away from zero.
+
+    Python's int() truncates toward zero, which is exactly what we need:
+    int(3.7) = 3   int(-3.7) = -3.  Adding 0.5 before truncation gives
+    standard half-up rounding in all quadrants.
+    """
+    return int(x + 0.5) if x >= 0 else int(x - 0.5)
+
 class ClockTimePicker(QWidget):
     time_changed = pyqtSignal()
 
     _STEP_LABELS = {0: "选择小时", 1: "选择分钟", 2: "选择秒"}
     _CLOCK_RADIUS = 108
-    _INNER_RADIUS = 66
+    _INNER_RADIUS = 60
+    _MID_RADIUS = 69
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -39,8 +51,7 @@ class ClockTimePicker(QWidget):
         self._minute = 0
         self._second = 0
         self._hovered_value = -1
-        self._is_minute_ring = False
-        self.setFixedSize(320, 400)
+        self.setFixedSize(320, 260)
         self.setMouseTracking(True)
 
     def set_time(self, value: time) -> None:
@@ -57,38 +68,39 @@ class ClockTimePicker(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        dark = DARK_MODE
+        palette = get_palette(dark)
+
+        # Fill the entire picker with the same card background as ClockTimePopup
+        painter.fillRect(self.rect(), QColor(palette.card_background))
+
+        header_h = 28
         cx = self.width() / 2
-        cy = self._CLOCK_RADIUS + 16
-        dark = self._is_dark_mode()
+        cy = header_h + self._CLOCK_RADIUS
 
-        # background
-        painter.fillRect(self.rect(), QColor("#1e1f29") if dark else QColor("#f4f6fb"))
-
-        # clock plate shadow
-        shadow = QRadialGradient(QPointF(cx, cy + 4), self._CLOCK_RADIUS + 10)
-        shadow.setColorAt(0, QColor(0, 0, 0, 30))
+        # disc shadow
+        shadow = QRadialGradient(QPointF(cx, cy + 4), self._CLOCK_RADIUS + 8)
+        shadow.setColorAt(0, QColor(0, 0, 0, 25))
         shadow.setColorAt(1, QColor(0, 0, 0, 0))
         painter.setBrush(QBrush(shadow))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(cx, cy + 4), self._CLOCK_RADIUS + 10, self._CLOCK_RADIUS + 10)
+        painter.drawEllipse(QPointF(cx, cy + 4), self._CLOCK_RADIUS + 8, self._CLOCK_RADIUS + 8)
 
-        # clock plate
-        plate_color = QColor("#2b2c3a") if dark else QColor("#ffffff")
-        painter.setBrush(QBrush(plate_color))
-        painter.setPen(QPen(QColor("#3a3d4d") if dark else QColor("#dbe0ef"), 1))
+        # disc plate
+        painter.setBrush(QBrush(QColor(palette.card_background)))
+        painter.setPen(QPen(QColor(palette.border), 1))
         painter.drawEllipse(QPointF(cx, cy), self._CLOCK_RADIUS, self._CLOCK_RADIUS)
 
         # inner ring for minute/second steps
         if self._step in (1, 2):
-            inner_color = QColor("#313445") if dark else QColor("#f0f2fa")
-            painter.setBrush(QBrush(inner_color))
-            painter.setPen(QPen(QColor("#4c5168") if dark else QColor("#c5cee6"), 1))
+            painter.setBrush(QBrush(QColor(palette.panel_background)))
+            painter.setPen(QPen(QColor(palette.border), 1))
             painter.drawEllipse(QPointF(cx, cy), self._INNER_RADIUS, self._INNER_RADIUS)
 
-        accent = QColor("#bd93f9") if dark else QColor("#7c4dff")
-        accent_dim = QColor("#3b3250") if dark else QColor("#f1e9ff")
-        text_main = QColor("#f8f8f2") if dark else QColor("#1d2333")
-        text_dim = QColor("#a8afc4") if dark else QColor("#79829b")
+        accent = QColor(palette.accent)
+        accent_dim = QColor(palette.accent_soft)
+        text_main = QColor(palette.text_primary)
+        text_dim = QColor(palette.text_muted)
 
         if self._step == 0:
             self._draw_hours(painter, cx, cy, accent, accent_dim, text_main, text_dim)
@@ -114,42 +126,41 @@ class ClockTimePicker(QWidget):
 
         if self._step == 0:
             angle = pi / 2 - (self._hour % 12) * 2 * pi / 12
-            hx = cx + self._CLOCK_RADIUS * 0.7 * cos(angle)
-            hy = cy - self._CLOCK_RADIUS * 0.7 * sin(angle)
+            HX = cx + self._CLOCK_RADIUS * 0.7 * cos(angle)
+            HY = cy - self._CLOCK_RADIUS * 0.7 * sin(angle)
             painter.setPen(QPen(accent, 2.5))
-            painter.drawLine(QPointF(cx, cy), QPointF(hx, hy))
+            painter.drawLine(QPointF(cx, cy), QPointF(HX, HY))
             painter.setBrush(accent)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QPointF(cx, cy), 5, 5)
         elif self._step == 1:
             angle = pi / 2 - self._minute * 2 * pi / 60
-            mx = cx + self._CLOCK_RADIUS * 0.7 * cos(angle)
-            my = cy - self._CLOCK_RADIUS * 0.7 * sin(angle)
+            MX = cx + self._CLOCK_RADIUS * 0.7 * cos(angle)
+            MY = cy - self._CLOCK_RADIUS * 0.7 * sin(angle)
             painter.setPen(QPen(accent, 2.5))
-            painter.drawLine(QPointF(cx, cy), QPointF(mx, my))
+            painter.drawLine(QPointF(cx, cy), QPointF(MX, MY))
             painter.setBrush(accent)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QPointF(cx, cy), 5, 5)
         else:
             angle = pi / 2 - self._second * 2 * pi / 60
-            sx = cx + self._CLOCK_RADIUS * 0.7 * cos(angle)
-            sy = cy - self._CLOCK_RADIUS * 0.7 * sin(angle)
+            SX = cx + self._CLOCK_RADIUS * 0.7 * cos(angle)
+            SY = cy - self._CLOCK_RADIUS * 0.7 * sin(angle)
             painter.setPen(QPen(accent, 2.5))
-            painter.drawLine(QPointF(cx, cy), QPointF(sx, sy))
+            painter.drawLine(QPointF(cx, cy), QPointF(SX, SY))
             painter.setBrush(accent)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QPointF(cx, cy), 5, 5)
 
-        # step label and time display
+        # top header: step label + time display + dots
         font_title = QFont("Segoe UI", 11, QFont.Weight.Bold)
         painter.setFont(font_title)
         painter.setPen(text_main)
         step_label = self._STEP_LABELS[self._step]
         time_display = f"{self._hour:02d}:{self._minute:02d}:{self._second:02d}"
-        painter.drawText(QRectF(16, 6, 280, 22), Qt.AlignmentFlag.AlignLeft, step_label)
-        painter.drawText(QRectF(16, 6, 280, 22), Qt.AlignmentFlag.AlignRight, time_display)
+        painter.drawText(QRectF(16, 0, 280, 20), Qt.AlignmentFlag.AlignLeft, step_label)
+        painter.drawText(QRectF(16, 0, 280, 20), Qt.AlignmentFlag.AlignRight, time_display)
 
-        # step indicators
         dot_y = 8
         for i in range(3):
             dx = self.width() // 2 - 20 + i * 20
@@ -162,92 +173,198 @@ class ClockTimePicker(QWidget):
         painter.end()
 
     def _draw_hours(self, painter, cx, cy, accent, accent_dim, text_main, text_dim):
+        # outer ring: 1-12
         for i in range(1, 13):
             angle = pi / 2 - i * 2 * pi / 12
-            r = self._CLOCK_RADIUS * 0.72
-            x = cx + r * cos(angle) - 12
-            y = cy - r * sin(angle) - 10
-            is_current = self._hour % 12 == i % 12
+            r = self._CLOCK_RADIUS * 0.73
+            x = cx + r * cos(angle) - 13
+            y = cy - r * sin(angle) - 11
+            is_current = self._hour == i or (i == 12 and self._hour == 0)
             is_hovered = self._hovered_value == i
             painter.save()
             if is_current:
                 painter.setBrush(accent)
                 painter.setPen(Qt.PenStyle.NoPen)
-                circle_rect = QRectF(x - 4, y - 2, 24, 24)
-                painter.drawRoundedRect(circle_rect, 12, 12)
+                circle_rect = QRectF(x - 4, y - 2, 26, 26)
+                painter.drawRoundedRect(circle_rect, 13, 13)
                 painter.setPen(QColor("#ffffff"))
             elif is_hovered:
                 painter.setBrush(accent_dim)
                 painter.setPen(Qt.PenStyle.NoPen)
-                circle_rect = QRectF(x - 4, y - 2, 24, 24)
-                painter.drawRoundedRect(circle_rect, 12, 12)
+                circle_rect = QRectF(x - 4, y - 2, 26, 26)
+                painter.drawRoundedRect(circle_rect, 13, 13)
                 painter.setPen(text_main)
             else:
                 painter.setPen(text_main)
-            font = QFont("Segoe UI", 13, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
+            font = QFont("Segoe UI", 12, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
             painter.setFont(font)
-            painter.drawText(QRectF(x, y, 24, 24), Qt.AlignmentFlag.AlignCenter, str(i))
+            painter.drawText(QRectF(x, y, 26, 26), Qt.AlignmentFlag.AlignCenter, str(i))
+            painter.restore()
+
+        # inner ring: 0, 13-23
+        for i in range(13, 25):
+            display = 0 if i == 24 else i
+            angle = pi / 2 - (i % 12) * 2 * pi / 12
+            r = self._MID_RADIUS * 0.68
+            x = cx + r * cos(angle) - 11
+            y = cy - r * sin(angle) - 9
+            is_current = self._hour == display
+            is_hovered = self._hovered_value == display
+            painter.save()
+            if is_current:
+                painter.setBrush(accent)
+                painter.setPen(Qt.PenStyle.NoPen)
+                circle_rect = QRectF(x - 2, y - 1, 22, 22)
+                painter.drawRoundedRect(circle_rect, 11, 11)
+                painter.setPen(QColor("#ffffff"))
+            elif is_hovered:
+                painter.setBrush(accent_dim)
+                painter.setPen(Qt.PenStyle.NoPen)
+                circle_rect = QRectF(x - 2, y - 1, 22, 22)
+                painter.drawRoundedRect(circle_rect, 11, 11)
+                painter.setPen(text_main)
+            else:
+                painter.setPen(text_dim)
+            font = QFont("Segoe UI", 10, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
+            painter.setFont(font)
+            painter.drawText(QRectF(x, y, 22, 22), Qt.AlignmentFlag.AlignCenter, str(display))
             painter.restore()
 
     def _draw_minutes(self, painter, cx, cy, accent, accent_dim, text_main, text_dim):
-        for i in range(0, 60, 5):
+        for i in range(0, 60):
             angle = pi / 2 - i * 2 * pi / 60
-            r = self._CLOCK_RADIUS * 0.72
-            x = cx + r * cos(angle) - 12
-            y = cy - r * sin(angle) - 10
-            is_current = self._minute // 5 * 5 == i
+            is_label = i % 5 == 0
+            r_text = self._CLOCK_RADIUS * 0.72
+            r_mid = self._CLOCK_RADIUS * 0.62
+            r_tick = self._CLOCK_RADIUS * 0.88
+            r_tick_inner = self._CLOCK_RADIUS * 0.80
+            rx = cos(angle)
+            ry = -sin(angle)
+            is_current = self._minute == i
             is_hovered = self._hovered_value == i
-            painter.save()
-            if is_current:
-                painter.setBrush(accent)
-                painter.setPen(Qt.PenStyle.NoPen)
-                circle_rect = QRectF(x - 4, y - 2, 24, 24)
-                painter.drawRoundedRect(circle_rect, 12, 12)
-                painter.setPen(QColor("#ffffff"))
-            elif is_hovered:
-                painter.setBrush(accent_dim)
-                painter.setPen(Qt.PenStyle.NoPen)
-                circle_rect = QRectF(x - 4, y - 2, 24, 24)
-                painter.drawRoundedRect(circle_rect, 12, 12)
-                painter.setPen(text_main)
+
+            if is_label or is_hovered:
+                x = cx + r_text * rx - 12
+                y = cy + r_text * ry - 10
+                if not is_label and is_hovered:
+                    # hovered non-label: show number in a small pop pill below the tick
+                    x = int(cx + r_mid * rx - 10)
+                    y = int(cy + r_mid * ry - 9)
+                    painter.save()
+                    painter.setBrush(accent)
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    pill_rect = QRectF(x - 2, y - 1, 20, 18)
+                    painter.drawRoundedRect(pill_rect, 9, 9)
+                    painter.setPen(QColor("#ffffff"))
+                    font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+                    painter.setFont(font)
+                    painter.drawText(QRectF(x, y, 18, 18), Qt.AlignmentFlag.AlignCenter, str(i))
+                    painter.restore()
+                else:
+                    painter.save()
+                    if is_current:
+                        painter.setBrush(accent)
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        circle_rect = QRectF(x - 4, y - 2, 24, 24)
+                        painter.drawRoundedRect(circle_rect, 12, 12)
+                        painter.setPen(QColor("#ffffff"))
+                    elif is_hovered:
+                        painter.setBrush(accent_dim)
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        circle_rect = QRectF(x - 4, y - 2, 24, 24)
+                        painter.drawRoundedRect(circle_rect, 12, 12)
+                        painter.setPen(text_main)
+                    else:
+                        painter.setPen(text_main)
+                    font = QFont("Segoe UI", 11, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
+                    painter.setFont(font)
+                    painter.drawText(QRectF(x, y, 24, 24), Qt.AlignmentFlag.AlignCenter, str(i))
+                    painter.restore()
             else:
-                painter.setPen(text_main)
-            font = QFont("Segoe UI", 12, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
-            painter.setFont(font)
-            painter.drawText(QRectF(x, y, 24, 24), Qt.AlignmentFlag.AlignCenter, str(i))
-            painter.restore()
+                # thin tick mark
+                tick_color = accent if is_current else text_dim
+                painter.setPen(QPen(tick_color, 1))
+                x1 = cx + r_tick_inner * rx
+                y1 = cy + r_tick_inner * ry
+                x2 = cx + r_tick * rx
+                y2 = cy + r_tick * ry
+                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
     def _draw_seconds(self, painter, cx, cy, accent, accent_dim, text_main, text_dim):
-        for i in range(0, 60, 5):
+        for i in range(0, 60):
             angle = pi / 2 - i * 2 * pi / 60
-            r = self._CLOCK_RADIUS * 0.72
-            x = cx + r * cos(angle) - 12
-            y = cy - r * sin(angle) - 10
-            is_current = self._second // 5 * 5 == i
+            is_label = i % 5 == 0
+            r_text = self._CLOCK_RADIUS * 0.72
+            r_mid = self._CLOCK_RADIUS * 0.62
+            r_tick = self._CLOCK_RADIUS * 0.88
+            r_tick_inner = self._CLOCK_RADIUS * 0.80
+            rx = cos(angle)
+            ry = -sin(angle)
+            is_current = self._second == i
             is_hovered = self._hovered_value == i
-            painter.save()
-            if is_current:
-                painter.setBrush(accent)
-                painter.setPen(Qt.PenStyle.NoPen)
-                circle_rect = QRectF(x - 4, y - 2, 24, 24)
-                painter.drawRoundedRect(circle_rect, 12, 12)
-                painter.setPen(QColor("#ffffff"))
-            elif is_hovered:
-                painter.setBrush(accent_dim)
-                painter.setPen(Qt.PenStyle.NoPen)
-                circle_rect = QRectF(x - 4, y - 2, 24, 24)
-                painter.drawRoundedRect(circle_rect, 12, 12)
-                painter.setPen(text_main)
+
+            if is_label or is_hovered:
+                x = cx + r_text * rx - 12
+                y = cy + r_text * ry - 10
+                if not is_label and is_hovered:
+                    x = int(cx + r_mid * rx - 10)
+                    y = int(cy + r_mid * ry - 9)
+                    painter.save()
+                    painter.setBrush(accent)
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    pill_rect = QRectF(x - 2, y - 1, 20, 18)
+                    painter.drawRoundedRect(pill_rect, 9, 9)
+                    painter.setPen(QColor("#ffffff"))
+                    font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+                    painter.setFont(font)
+                    painter.drawText(QRectF(x, y, 18, 18), Qt.AlignmentFlag.AlignCenter, str(i))
+                    painter.restore()
+                else:
+                    painter.save()
+                    if is_current:
+                        painter.setBrush(accent)
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        circle_rect = QRectF(x - 4, y - 2, 24, 24)
+                        painter.drawRoundedRect(circle_rect, 12, 12)
+                        painter.setPen(QColor("#ffffff"))
+                    elif is_hovered:
+                        painter.setBrush(accent_dim)
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        circle_rect = QRectF(x - 4, y - 2, 24, 24)
+                        painter.drawRoundedRect(circle_rect, 12, 12)
+                        painter.setPen(text_main)
+                    else:
+                        painter.setPen(text_main)
+                    font = QFont("Segoe UI", 11, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
+                    painter.setFont(font)
+                    painter.drawText(QRectF(x, y, 24, 24), Qt.AlignmentFlag.AlignCenter, str(i))
+                    painter.restore()
             else:
-                painter.setPen(text_main)
-            font = QFont("Segoe UI", 12, QFont.Weight.Bold if is_current else QFont.Weight.Normal)
-            painter.setFont(font)
-            painter.drawText(QRectF(x, y, 24, 24), Qt.AlignmentFlag.AlignCenter, str(i))
-            painter.restore()
+                tick_color = accent if is_current else text_dim
+                painter.setPen(QPen(tick_color, 1))
+                x1 = cx + r_tick_inner * rx
+                y1 = cy + r_tick_inner * ry
+                x2 = cx + r_tick * rx
+                y2 = cy + r_tick * ry
+                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+    def _disc_center(self) -> tuple[float, float]:
+        header_h = 28
+        return self.width() / 2, header_h + self._CLOCK_RADIUS
+
+    def _angle_to_clock_index(self, degrees: float) -> int:
+        """Map mouse angle to a 12-hour clock index (0=12 o'clock, 1=1 o'clock, ..., 11=11 o'clock)."""
+        raw = (90.0 - degrees) / 30.0
+        idx = _rhu(raw) % 12
+        return idx  # 0..11
+
+    def _angle_to_min_sec(self, degrees: float) -> int:
+        """Map mouse angle to 0-59 minute/second value."""
+        raw = (90.0 - degrees) / 6.0
+        return _rhu(raw) % 60
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        cx = self.width() / 2
-        cy = self._CLOCK_RADIUS + 16
+        cx, cy = self._disc_center()
         mx = event.position().x()
         my = event.position().y()
         dist = hypot(mx - cx, my - cy)
@@ -256,20 +373,23 @@ class ClockTimePicker(QWidget):
             angle += 2 * pi
         degrees = angle * 180 / pi
 
-        if self._step == 0 and dist < self._CLOCK_RADIUS and dist > self._CLOCK_RADIUS * 0.3:
-            hour_idx = round(degrees / 30) % 12
-            self._hovered_value = 12 if hour_idx == 0 else hour_idx
+        if self._step == 0 and dist > self._INNER_RADIUS * 0.35 and dist < self._CLOCK_RADIUS * 1.05:
+            is_inner = dist < self._MID_RADIUS
+            ci = self._angle_to_clock_index(degrees)
+            if is_inner:
+                self._hovered_value = 0 if ci == 0 else ci + 12  # inner: 0, 13-23
+            else:
+                self._hovered_value = 12 if ci == 0 else ci      # outer: 1-12
             self.update()
-        elif self._step == 1 and dist < self._CLOCK_RADIUS and dist > self._CLOCK_RADIUS * 0.3:
-            self._hovered_value = round(degrees / 6) % 60 // 5 * 5
+        elif self._step == 1 and dist > self._CLOCK_RADIUS * 0.3 and dist < self._CLOCK_RADIUS * 1.05:
+            self._hovered_value = self._angle_to_min_sec(degrees)
             self.update()
-        elif self._step == 2 and dist < self._CLOCK_RADIUS and dist > self._CLOCK_RADIUS * 0.3:
-            self._hovered_value = round(degrees / 6) % 60 // 5 * 5
+        elif self._step == 2 and dist > self._CLOCK_RADIUS * 0.3 and dist < self._CLOCK_RADIUS * 1.05:
+            self._hovered_value = self._angle_to_min_sec(degrees)
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        cx = self.width() / 2
-        cy = self._CLOCK_RADIUS + 16
+        cx, cy = self._disc_center()
         mx = event.position().x()
         my = event.position().y()
         dist = hypot(mx - cx, my - cy)
@@ -278,24 +398,26 @@ class ClockTimePicker(QWidget):
             angle += 2 * pi
         degrees = angle * 180 / pi
 
-        if dist > self._CLOCK_RADIUS or dist < self._CLOCK_RADIUS * 0.25:
+        if dist > self._CLOCK_RADIUS * 1.05 or dist < self._INNER_RADIUS * 0.35:
             return
 
         if self._step == 0:
-            hour_idx = round(degrees / 30) % 12
-            self._hour = 12 if hour_idx == 0 else hour_idx
+            is_inner = dist < self._MID_RADIUS
+            ci = self._angle_to_clock_index(degrees)
+            if is_inner:
+                self._hour = 0 if ci == 0 else ci + 12
+            else:
+                self._hour = 12 if ci == 0 else ci
             self._step = 1
             self._hovered_value = -1
             self.update()
         elif self._step == 1:
-            minute_idx = round(degrees / 6) % 60 // 5 * 5
-            self._minute = minute_idx
+            self._minute = self._angle_to_min_sec(degrees)
             self._step = 2
             self._hovered_value = -1
             self.update()
         elif self._step == 2:
-            second_idx = round(degrees / 6) % 60 // 5 * 5
-            self._second = second_idx
+            self._second = self._angle_to_min_sec(degrees)
             self._step = 0
             self._hovered_value = -1
             self.time_changed.emit()
@@ -312,32 +434,32 @@ class ClockTimePopup(QFrame):
         super().__init__(parent)
         self.setObjectName("clockTimePopup")
         self.setWindowFlags(
-            Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         self._picker = ClockTimePicker(self)
-        self.setFixedSize(self._picker.width(), self._picker.height() + 52)
+        self._picker.time_changed.connect(self._on_picker_done)
+        self.setFixedSize(self._picker.width(), self._picker.height())
         layout.addWidget(self._picker)
 
-        footer = QFrame()
-        footer.setObjectName("clockFooter")
-        footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(12, 10, 12, 10)
-        self._ok_btn = QLabel("确 定")
-        self._ok_btn.setObjectName("clockOkButton")
-        self._ok_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        footer_layout.addStretch()
-        footer_layout.addWidget(self._ok_btn)
-        layout.addWidget(footer)
-
-        self._ok_btn.mousePressEvent = lambda e: self._accept()
-
         self.adjustSize()
+        self.setMouseTracking(True)
+        self.installEventFilter(self)
+
+    def paintEvent(self, event) -> None:
+        palette = get_palette(DARK_MODE)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(palette.card_background))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRect(self.rect())
+        painter.end()
 
     def set_time(self, value: time) -> None:
         self._picker.set_time(value)
@@ -345,8 +467,12 @@ class ClockTimePopup(QFrame):
     def get_time(self) -> time:
         return self._picker.get_time()
 
-    def _accept(self) -> None:
-        self._picker._step = 0
-        self._picker.update()
+    def _on_picker_done(self) -> None:
         self.time_selected.emit(self.get_time())
         self.hide()
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Leave and obj is self:
+            self.time_selected.emit(self.get_time())
+            self.hide()
+        return super().eventFilter(obj, event)

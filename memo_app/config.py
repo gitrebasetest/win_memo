@@ -7,7 +7,7 @@ import sys
 
 
 APP_NAME = "win_memo_tool"
-DISPLAY_NAME = "Win Memo Tool"
+DISPLAY_NAME = "松鼠备忘录"
 DEFAULT_HOLIDAY_API = "https://timor.tech/api/holiday/year"
 
 

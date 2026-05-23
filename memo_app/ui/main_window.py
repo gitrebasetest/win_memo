@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, time
+from pathlib import Path
 
 from PyQt6.QtCore import QTimer, QSize, QTime, Qt
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QApplication, QStyle
+from PyQt6.QtGui import QAction, QIcon, QPixmap
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -36,7 +37,7 @@ from memo_app.ui.event_card_widget import EventCardWidget
 from memo_app.ui.reminder_window import ReminderWindow
 from memo_app.ui.clock_time_input import ClockTimeInput
 from memo_app.ui.clock_picker import set_clock_dark_mode
-from memo_app.ui.theme import build_app_stylesheet
+from memo_app.ui.theme import build_app_stylesheet, get_palette
 
 
 RULE_TYPE_MAP = {
@@ -67,10 +68,11 @@ class MainWindow(QMainWindow):
         self.current_event_id: int | None = None
         self.active_event_id: int | None = None
         self.dark_mode_enabled = False
+        set_clock_dark_mode(False)
         self.reminder_window = ReminderWindow()
         self.poll_timer = QTimer(self)
         self.tray_icon = QSystemTrayIcon(self)
-        self.setWindowTitle("Win Memo Tool")
+        self.setWindowTitle("松鼠备忘录")
         self.resize(1000, 600)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._build_ui()
@@ -92,11 +94,23 @@ class MainWindow(QMainWindow):
 
         title_wrap = QVBoxLayout()
         title_wrap.setSpacing(4)
-        title = QLabel("桌面备忘录")
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(10)
+        logo_label = QLabel()
+        logo_path = Path(__file__).resolve().parents[2] / "assets" / "logo.png"
+        logo_pixmap = QPixmap(str(logo_path)).scaled(36, 36, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        logo_label.setPixmap(logo_pixmap)
+        logo_label.setFixedSize(36, 36)
+        title = QLabel("松鼠备忘录")
         title.setObjectName("pageTitle")
+        title_row.addWidget(logo_label)
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+
         subtitle = QLabel("轻量记录、定时提醒、悬浮常驻")
         subtitle.setObjectName("pageSubtitle")
-        title_wrap.addWidget(title)
+        title_wrap.addLayout(title_row)
         title_wrap.addWidget(subtitle)
 
         self.theme_checkbox = QCheckBox("暗色模式")
@@ -305,12 +319,81 @@ class MainWindow(QMainWindow):
     def _apply_styles(self) -> None:
         self.setStyleSheet(build_app_stylesheet(self.dark_mode_enabled))
         self.reminder_window.apply_theme(self.dark_mode_enabled)
+        # QMenu, QScrollBar and QMessageBox live outside the MainWindow tree,
+        # so apply their styles globally on the QApplication instance.
+        palette = get_palette(self.dark_mode_enabled)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(
+                f"""
+                QMenu {{
+                    background: {palette.card_background};
+                    border: 1px solid {palette.border};
+                    border-radius: 10px;
+                    padding: 6px;
+                    color: {palette.text_primary};
+                }}
+                QMenu::item {{
+                    padding: 8px 28px 8px 14px;
+                    border-radius: 6px;
+                    color: {palette.text_primary};
+                }}
+                QMenu::item:selected {{
+                    background: {palette.accent_soft};
+                }}
+                QMenu::separator {{
+                    height: 1px;
+                    background: {palette.border};
+                    margin: 4px 10px;
+                }}
+                QScrollBar:vertical {{
+                    background: {palette.panel_background};
+                    width: 8px;
+                    border-radius: 4px;
+                }}
+                QScrollBar::handle:vertical {{
+                    background: {palette.border_strong};
+                    border-radius: 4px;
+                    min-height: 30px;
+                }}
+                QScrollBar::handle:vertical:hover {{
+                    background: {palette.text_muted};
+                }}
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                    height: 0;
+                }}
+                QMessageBox {{
+                    background: {palette.card_background};
+                    color: {palette.text_primary};
+                }}
+                QMessageBox QLabel {{
+                    color: {palette.text_primary};
+                }}
+                QMessageBox QPushButton {{
+                    background: {palette.raised_background};
+                    color: {palette.text_secondary};
+                    border: 1px solid {palette.border};
+                    border-radius: 8px;
+                    padding: 6px 20px;
+                    min-width: 70px;
+                    font-weight: 600;
+                }}
+                QMessageBox QPushButton:hover {{
+                    background: {palette.card_background};
+                    border-color: {palette.border_strong};
+                }}
+                """
+            )
         self.refresh_events()
 
     def _setup_tray_icon(self) -> None:
-        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+        from pathlib import Path
+        logo_path = Path(__file__).resolve().parents[2] / "assets" / "logo.png"
+        icon = QIcon(str(logo_path))
         self.setWindowIcon(icon)
-        self.tray_icon.setIcon(icon)
+        pixmap = QPixmap(str(logo_path))
+        tray_pixmap = pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.tray_icon.setIcon(QIcon(tray_pixmap))
 
         menu = QMenu(self)
         show_action = QAction("显示窗口", self)
@@ -324,7 +407,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray_icon.setContextMenu(menu)
-        self.tray_icon.setToolTip("Win Memo Tool")
+        self.tray_icon.setToolTip("松鼠备忘录")
         self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.show()
 

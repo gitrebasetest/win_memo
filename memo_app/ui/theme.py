@@ -233,6 +233,54 @@ def build_app_stylesheet(dark_mode_enabled: bool) -> str:
         border: none;
         width: 26px;
     }}
+    QComboBox QAbstractItemView {{
+        background: {palette.card_background};
+        border: 1px solid {palette.border};
+        border-radius: 10px;
+        outline: none;
+        color: {palette.text_primary};
+        selection-background-color: {palette.accent_soft};
+        selection-color: {palette.text_primary};
+    }}
+    QDateTimeEdit QAbstractItemView {{
+        background: {palette.card_background};
+        border: 1px solid {palette.border};
+        border-radius: 10px;
+        outline: none;
+        color: {palette.text_primary};
+        selection-background-color: {palette.accent_soft};
+        selection-color: {palette.text_primary};
+    }}
+    QCalendarWidget QWidget#qt_calendar_navigationbar {{
+        background: {palette.card_background};
+        border-bottom: 1px solid {palette.border};
+    }}
+    QCalendarWidget QToolButton {{
+        color: {palette.text_primary};
+        background: {palette.raised_background};
+        border: 1px solid {palette.border};
+        border-radius: 8px;
+        padding: 4px 10px;
+        font-weight: 700;
+    }}
+    QCalendarWidget QToolButton:hover {{
+        background: {palette.card_background};
+    }}
+    QCalendarWidget QToolButton::menu-indicator {{
+        image: none;
+    }}
+    QCalendarWidget QMenu {{
+        background: {palette.card_background};
+        border: 1px solid {palette.border};
+        color: {palette.text_primary};
+    }}
+    QCalendarWidget QTableView {{
+        background: {palette.card_background};
+        alternate-background-color: {palette.panel_background};
+        selection-background-color: {palette.accent_soft};
+        selection-color: {palette.text_primary};
+        outline: none;
+    }}
     QPushButton {{
         min-height: 38px;
         border-radius: 12px;
@@ -419,5 +467,61 @@ def build_app_stylesheet(dark_mode_enabled: bool) -> str:
         background: {palette.card_background};
         border: 1px solid {palette.border};
         border-radius: 16px;
+    }}
+    QMenu {{
+        background: {palette.card_background};
+        border: 1px solid {palette.border};
+        border-radius: 10px;
+        padding: 6px;
+        color: {palette.text_primary};
+    }}
+    QMenu::item {{
+        padding: 8px 28px 8px 14px;
+        border-radius: 6px;
+        color: {palette.text_primary};
+    }}
+    QMenu::item:selected {{
+        background: {palette.accent_soft};
+    }}
+    QMenu::separator {{
+        height: 1px;
+        background: {palette.border};
+        margin: 4px 10px;
+    }}
+    QScrollBar:vertical {{
+        background: {palette.panel_background};
+        width: 8px;
+        border-radius: 4px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {palette.border_strong};
+        border-radius: 4px;
+        min-height: 30px;
+    }}
+    QScrollBar::handle:vertical:hover {{
+        background: {palette.text_muted};
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+    }}
+    QMessageBox {{
+        background: {palette.card_background};
+        color: {palette.text_primary};
+    }}
+    QMessageBox QLabel {{
+        color: {palette.text_primary};
+    }}
+    QMessageBox QPushButton {{
+        background: {palette.raised_background};
+        color: {palette.text_secondary};
+        border: 1px solid {palette.border};
+        border-radius: 8px;
+        padding: 6px 20px;
+        min-width: 70px;
+        font-weight: 600;
+    }}
+    QMessageBox QPushButton:hover {{
+        background: {palette.card_background};
+        border-color: {palette.border_strong};
     }}
     """

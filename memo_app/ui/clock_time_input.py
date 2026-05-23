@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, QTime
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
 from memo_app.ui.clock_picker import ClockTimePopup
+from memo_app.ui.theme import get_palette
 
 
 class ClockTimeInput(QFrame):
