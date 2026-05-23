@@ -9,7 +9,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('assets/logo.png', 'assets')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
