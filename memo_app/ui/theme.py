@@ -416,6 +416,18 @@ def build_app_stylesheet(dark_mode_enabled: bool) -> str:
         font-weight: 700;
         max-width: 72px;
     }}
+    QLabel#modeBadge {{
+        border-radius: 10px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        background: {palette.accent_soft};
+        color: {palette.accent_text};
+    }}
+    QLabel#modeBadge[mode="edit"] {{
+        background: {palette.warning_soft};
+        color: {palette.warning_text};
+    }}
     QFrame#reminderContentCard, QFrame#reminderActions {{
         background: {palette.card_background};
         border: 1px solid {palette.border};

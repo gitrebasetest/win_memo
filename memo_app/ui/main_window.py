@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
         self.scheduler = Scheduler(self.holiday_service)
         self.current_event_id: int | None = None
         self.active_event_id: int | None = None
+        self._ignore_selection_change = False
         self.dark_mode_enabled = False
         set_clock_dark_mode(False)
         self.reminder_window = ReminderWindow()
@@ -137,6 +138,9 @@ class MainWindow(QMainWindow):
         list_hint.setObjectName("sectionHint")
         list_layout.addWidget(list_title)
         list_layout.addWidget(list_hint)
+        self.new_event_button = QPushButton("+ 新建事件")
+        self.new_event_button.setObjectName("primaryButton")
+        list_layout.addWidget(self.new_event_button)
         self.event_list = QListWidget()
         self.event_list.setObjectName("eventList")
         list_layout.addWidget(self.event_list)
@@ -149,12 +153,19 @@ class MainWindow(QMainWindow):
         form_layout = QVBoxLayout(form_panel)
         form_layout.setContentsMargins(18, 18, 18, 18)
         form_layout.setSpacing(12)
-        form_title = QLabel("事件编辑")
-        form_title.setObjectName("sectionTitle")
-        form_hint = QLabel("创建一次性、每周或工作日提醒")
-        form_hint.setObjectName("sectionHint")
-        form_layout.addWidget(form_title)
-        form_layout.addWidget(form_hint)
+        form_header_row = QHBoxLayout()
+        form_header_row.setSpacing(8)
+        self.form_title = QLabel("新建事件")
+        self.form_title.setObjectName("sectionTitle")
+        self.mode_badge = QLabel("新增")
+        self.mode_badge.setObjectName("modeBadge")
+        form_header_row.addWidget(self.form_title)
+        form_header_row.addStretch(1)
+        form_header_row.addWidget(self.mode_badge)
+        form_layout.addLayout(form_header_row)
+        self.form_hint = QLabel("创建一次性、每周或工作日提醒")
+        self.form_hint.setObjectName("sectionHint")
+        form_layout.addWidget(self.form_hint)
 
         editor_group = QFrame()
         editor_group.setObjectName("groupCard")
@@ -296,12 +307,15 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(splitter)
 
         self.setCentralWidget(root)
+        self._update_form_header()
         self._apply_styles()
 
     def _wire_signals(self) -> None:
         self.save_button.clicked.connect(self.save_event)
         self.clear_button.clicked.connect(self.clear_form)
         self.delete_button.clicked.connect(self.delete_selected_event)
+        self.new_event_button.clicked.connect(self.clear_form)
+        self.title_input.textChanged.connect(self._on_title_changed)
         self.event_list.itemSelectionChanged.connect(self._handle_event_selection_changed)
         self.rule_type_input.currentIndexChanged.connect(self._update_rule_inputs)
         self.theme_checkbox.toggled.connect(self.toggle_theme)
@@ -433,6 +447,27 @@ class MainWindow(QMainWindow):
     def toggle_startup(self, checked: bool) -> None:
         set_startup_enabled(checked)
 
+    def _update_form_header(self) -> None:
+        is_new = self.current_event_id is None
+        if is_new:
+            self.form_title.setText("新建事件")
+            self.form_hint.setText("创建一次性、每周或工作日提醒")
+            self.save_button.setText("添加事件")
+            self.delete_button.setVisible(False)
+            self.mode_badge.setText("新增")
+            self.mode_badge.setProperty("mode", "new")
+        else:
+            self.form_title.setText("编辑事件")
+            title_text = self.title_input.text().strip()
+            self.form_hint.setText(f"正在编辑: {title_text}" if title_text else "正在编辑事件")
+            self.save_button.setText("更新事件")
+            self.delete_button.setVisible(True)
+            self.mode_badge.setText("编辑")
+            self.mode_badge.setProperty("mode", "edit")
+        self.style().unpolish(self.mode_badge)
+        self.style().polish(self.mode_badge)
+        self.mode_badge.update()
+
     def _update_rule_inputs(self) -> None:
         rule_type = RULE_TYPE_MAP[self.rule_type_input.currentText()]
         is_one_time = rule_type == "one_time"
@@ -534,6 +569,8 @@ class MainWindow(QMainWindow):
         self.clear_form()
 
     def _handle_event_selection_changed(self) -> None:
+        if self._ignore_selection_change:
+            return
         self._update_card_selection_states()
         self.load_selected_event()
 
@@ -550,6 +587,19 @@ class MainWindow(QMainWindow):
         item = self.event_list.currentItem()
         if item is None:
             return
+        # 如果当前处于新增模式且表单有内容，先确认是否丢弃
+        if self.current_event_id is None and self.title_input.text().strip():
+            reply = QMessageBox.question(
+                self, "未保存的内容", "当前表单有未保存的内容，切换到编辑模式将丢弃这些内容。是否继续？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._ignore_selection_change = True
+                self.event_list.clearSelection()
+                self._update_card_selection_states()
+                self._ignore_selection_change = False
+                return
         event_id = item.data(Qt.ItemDataRole.UserRole)
         for event in self.repository.list_events():
             if event.id != event_id:
@@ -568,6 +618,7 @@ class MainWindow(QMainWindow):
             if event.time_of_day:
                 h, m, s = map(int, event.time_of_day.split(":"))
                 self.time_input.setTime(QTime(h, m, s))
+            self._update_form_header()
             break
 
     def delete_selected_event(self) -> None:
@@ -575,9 +626,21 @@ class MainWindow(QMainWindow):
         if item is None:
             return
         event_id = item.data(Qt.ItemDataRole.UserRole)
+        reply = QMessageBox.question(
+            self, "确认删除", "确认删除此事件？\n此操作无法撤销。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         self.repository.delete_event(event_id)
         self.refresh_events()
         self.clear_form()
+
+    def _on_title_changed(self) -> None:
+        if self.current_event_id is not None:
+            title_text = self.title_input.text().strip()
+            self.form_hint.setText(f"正在编辑: {title_text}" if title_text else "正在编辑事件")
 
     def clear_form(self) -> None:
         self.current_event_id = None
@@ -586,6 +649,7 @@ class MainWindow(QMainWindow):
         self.notes_input.clear()
         self.rule_type_input.setCurrentIndex(0)
         self.weekday_input.setCurrentIndex(0)
+        self._update_form_header()
 
     def check_due_events(self) -> None:
         now = datetime.now().replace(microsecond=0)
