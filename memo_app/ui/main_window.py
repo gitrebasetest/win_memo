@@ -100,9 +100,9 @@ class MainWindow(QMainWindow):
         title_row.setSpacing(10)
         logo_label = QLabel()
         logo_path = Path(__file__).resolve().parents[2] / "assets" / "logo.png"
-        logo_pixmap = QPixmap(str(logo_path)).scaled(36, 36, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        logo_pixmap = QPixmap(str(logo_path)).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         logo_label.setPixmap(logo_pixmap)
-        logo_label.setFixedSize(36, 36)
+        logo_label.setFixedSize(48, 48)
         title = QLabel("松鼠备忘录")
         title.setObjectName("pageTitle")
         title_row.addWidget(logo_label)
@@ -138,9 +138,6 @@ class MainWindow(QMainWindow):
         list_hint.setObjectName("sectionHint")
         list_layout.addWidget(list_title)
         list_layout.addWidget(list_hint)
-        self.new_event_button = QPushButton("+ 新建事件")
-        self.new_event_button.setObjectName("primaryButton")
-        list_layout.addWidget(self.new_event_button)
         self.event_list = QListWidget()
         self.event_list.setObjectName("eventList")
         list_layout.addWidget(self.event_list)
@@ -287,12 +284,12 @@ class MainWindow(QMainWindow):
 
         self.save_button = QPushButton("保存事件")
         self.save_button.setObjectName("primaryButton")
-        self.clear_button = QPushButton("清空表单")
-        self.clear_button.setObjectName("secondaryButton")
+        self.cancel_button = QPushButton("取消更新")
+        self.cancel_button.setObjectName("secondaryButton")
         self.delete_button = QPushButton("删除事件")
         self.delete_button.setObjectName("dangerButton")
         footer_row.addWidget(self.save_button)
-        footer_row.addWidget(self.clear_button)
+        footer_row.addWidget(self.cancel_button)
         footer_row.addWidget(self.delete_button)
 
         content_layout.addLayout(footer_row)
@@ -312,9 +309,8 @@ class MainWindow(QMainWindow):
 
     def _wire_signals(self) -> None:
         self.save_button.clicked.connect(self.save_event)
-        self.clear_button.clicked.connect(self.clear_form)
+        self.cancel_button.clicked.connect(self.clear_form)
         self.delete_button.clicked.connect(self.delete_selected_event)
-        self.new_event_button.clicked.connect(self.clear_form)
         self.title_input.textChanged.connect(self._on_title_changed)
         self.event_list.itemSelectionChanged.connect(self._handle_event_selection_changed)
         self.rule_type_input.currentIndexChanged.connect(self._update_rule_inputs)
@@ -406,7 +402,7 @@ class MainWindow(QMainWindow):
         icon = QIcon(str(logo_path))
         self.setWindowIcon(icon)
         pixmap = QPixmap(str(logo_path))
-        tray_pixmap = pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        tray_pixmap = pixmap.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.tray_icon.setIcon(QIcon(tray_pixmap))
 
         menu = QMenu(self)
@@ -453,6 +449,7 @@ class MainWindow(QMainWindow):
             self.form_title.setText("新建事件")
             self.form_hint.setText("创建一次性、每周或工作日提醒")
             self.save_button.setText("添加事件")
+            self.cancel_button.setVisible(False)
             self.delete_button.setVisible(False)
             self.mode_badge.setText("新增")
             self.mode_badge.setProperty("mode", "new")
@@ -461,6 +458,7 @@ class MainWindow(QMainWindow):
             title_text = self.title_input.text().strip()
             self.form_hint.setText(f"正在编辑: {title_text}" if title_text else "正在编辑事件")
             self.save_button.setText("更新事件")
+            self.cancel_button.setVisible(True)
             self.delete_button.setVisible(True)
             self.mode_badge.setText("编辑")
             self.mode_badge.setProperty("mode", "edit")
@@ -559,7 +557,6 @@ class MainWindow(QMainWindow):
                 if saved.id == self.current_event_id:
                     event.created_at = saved.created_at
                     event.last_triggered_at = saved.last_triggered_at
-                    event.snooze_until = saved.snooze_until
                     event.status = saved.status
                     break
             event.next_trigger_at = self.scheduler.compute_next_trigger(event)
@@ -644,7 +641,9 @@ class MainWindow(QMainWindow):
 
     def clear_form(self) -> None:
         self.current_event_id = None
+        self._ignore_selection_change = True
         self.event_list.clearSelection()
+        self._ignore_selection_change = False
         self.title_input.clear()
         self.notes_input.clear()
         self.rule_type_input.setCurrentIndex(0)
